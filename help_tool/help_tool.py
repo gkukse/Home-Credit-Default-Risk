@@ -375,37 +375,235 @@ def model_confusion_matrix(model, X_validation, y_validation, y_pred):
     plt.show()
 
 
-def encode_weekday(day_of_week):
-    """Encode weekday using sine and cosine functions."""
-    weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
-    # Get the index of the weekday
-    index = weekdays.index(day_of_week.upper())
-    # Convert index to radians
-    radians = (index / 7.0) * 2 * np.pi
-    # Encode using sine and cosine
-    sin_encoding = np.sin(radians)
-    cos_encoding = np.cos(radians)
-    return sin_encoding, cos_encoding
 
-# # Assuming df is your DataFrame with the column 'WEEKDAY_APPR_PROCESS_START'
-# # Encode weekday for the 'WEEKDAY_APPR_PROCESS_START' column
-# sin_encoding, cos_encoding = zip(*application_train['WEEKDAY_APPR_PROCESS_START'].apply(encode_weekday))
+""" Encoding Various values """
 
-# # Add encoded features to the DataFrame
-# application_train['WEEKDAY_APPR_PROCESS_START_sin'] = sin_encoding
-# application_train['WEEKDAY_APPR_PROCESS_START_cos'] = cos_encoding
+def convert_flags(df):
+    for col in df.columns:
+        if col.startswith('FLAG'):
+            df[col] = df[col].replace({'Y': 1, 'N': 0}).astype(int)
+            df[col] = df[col].infer_objects(copy=False)
+    return df
 
-# # Display the modified DataFrame
-# print(application_train.head())
+def accompanied(df, target_feature):
+    #target_feature = 'NAME_TYPE_SUITE'
+    df[target_feature] = np.where(df[target_feature] == 'Unaccompanied', 1, 0)
+    return df[target_feature]
 
+def top_five_categories(df, target_feature):
+
+    top_goods_list = df[target_feature].value_counts().nlargest(5).index.to_list()
+
+    df.loc[~df[target_feature].isin(top_goods_list), target_feature] = 'Other'
+    return df[target_feature]
+
+def risk_category(df, target_feature):
+    df['new_feature'] = df[target_feature].apply(lambda x: 1 if 'low_normal' in x.lower() else 1.5 if 'low_action' in x.lower() else 2 if 'middle' in x.lower() else 3 if 'high' in x.lower() else np.nan)
+
+    return df['new_feature']
+
+def client_type_encoding(df, target_feature):
+    #target_feature = 'NAME_CLIENT_TYPE'
+    df.loc[df[target_feature] == 'New', target_feature] = 1
+    df.loc[df[target_feature] == 'Refreshed', target_feature] = 1.5
+    df.loc[df[target_feature] == 'Repeater', target_feature] = 2
+    df.loc[df[target_feature] == 'XNA', target_feature] = np.nan 
+
+    df[target_feature] = df[target_feature].astype(float)
+
+    return df[target_feature]
+
+
+def product_combination(df):
+
+    target_feature = 'PRODUCT_COMBINATION'
+
+    df_new=pd.DataFrame()
+    df_new[['CONTRACT_TYPE', 'PRODUCT_PLACE', '0']] = df[target_feature].str.split(' ', n=2, expand=True)
+
+    df_new['PRODUCT_PLACE'] = df_new['PRODUCT_PLACE'].str.rstrip(':').str.rstrip('s').str.lower()
+
+    df_new['PRODUCT_RANK'] = df_new['0'].apply(lambda x: 
+        1 if pd.notna(x) and 'low' in x.lower() else 
+        2 if pd.notna(x) and 'middle' in x.lower() else 
+        3 if pd.notna(x) and 'high' in x.lower() else 
+        np.nan
+    )
+
+    df_new['PRODUCT_INTEREST'] = df_new['0'].apply(lambda x: 
+        1 if pd.notna(x) and 'with interest' in x.lower() else 
+        0 if pd.notna(x) and 'without interest' in x.lower() else 
+        np.nan
+    )
+
+    df[['PRODUCT_PLACE', 'PRODUCT_RANK', 'PRODUCT_INTEREST']] = df_new[['PRODUCT_PLACE', 'PRODUCT_RANK', 'PRODUCT_INTEREST']]
+    df.drop(columns=target_feature, inplace=True)
+    
+    return df
+
+def contract_status(df, target_feature):
+    df.loc[df[target_feature] == 'Approved', target_feature] = 2
+    df.loc[df[target_feature] == 'Unused offer', target_feature] = 1
+    df.loc[df[target_feature] == 'Refused', target_feature] = -1
+    df.loc[df[target_feature] == 'Canceled', target_feature] = -2
+
+    df[target_feature] = df[target_feature].astype(float)
+
+    return df[target_feature]
+
+def payment_type(df, target_feature):
+    #target_feature = 'NAME_PAYMENT_TYPE'
+
+    df.loc[df[target_feature] == 'Cash through the bank', 'new_feature'] = 1
+    df.loc[~df[target_feature].isin(['Cash through the bank', 'XNA']), 'new_feature'] = 0
+    df.drop(columns=[target_feature], inplace=True)
+
+    return df['new_feature']
 
 def encode_weekday_sin(day_of_week):
     """Encode weekday using sine function."""
     weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
-    # Get the index of the weekday
     index = weekdays.index(day_of_week.upper())
-    # Convert index to radians
     radians = (index / 7.0) * 2 * np.pi
-    # Encode using sine function
     sin_encoding = np.sin(radians)
     return sin_encoding
+
+def weekday_encoding(df):
+    df['WEEKDAY_APPR_PROCESS_START'] = df['WEEKDAY_APPR_PROCESS_START'].apply(encode_weekday_sin)
+    return df
+
+
+def cardinality_test(df):
+    cardinality_threshold = 50
+    hight_cardinality = [col for col in df.select_dtypes(include=['object', 'category']).columns if df[col].nunique() > cardinality_threshold]
+
+    return hight_cardinality
+
+
+
+
+def encode_categories(df):
+    """ Encoding various categories"""
+
+    df = convert_flags(df)
+
+    # Binary and/or unknown categories
+    binary_replacements = {
+        'CODE_GENDER': {'F': 1, 'M': 0, 'XNA': np.nan},
+        'NAME_CONTRACT_TYPE': {'Cash loans': 1, 'Revolving loans': 0},
+        'EMERGENCYSTATE_MODE': {'Yes': 1, 'No': 0}
+    }
+    for col, mapping in binary_replacements.items():
+        df[col] = df[col].replace(mapping).astype(float)
+
+    df['CODE_GENDER_F'] = df.pop('CODE_GENDER')
+    df['NAME_CONTRACT_TYPE_CASH_LOANS'] = df.pop('NAME_CONTRACT_TYPE')
+
+    # One-hot encodings
+    one_hot_conditions = {
+        'HOUSING_TYPE_House': df['NAME_HOUSING_TYPE'] == 'House / apartment',
+        'FONDKAPREMONT_reg_oper_account': df['FONDKAPREMONT_MODE'] == 'reg oper account',
+        'HOUSETYPE_flats': df['HOUSETYPE_MODE'] == 'block of flats'
+    }
+    for new_col, condition in one_hot_conditions.items():
+        df[new_col] = condition.astype(int)
+
+    df['WALLSMATERIAL_MODE'] = df['WALLSMATERIAL_MODE'].map({
+        'Panel': 1,
+        'Stone, brick': 2
+    }).fillna(3).astype(float)
+
+    education_mapping = {
+        'Lower secondary': 1, 
+        'Secondary / secondary special': 2,
+        'Incomplete higher': 3,
+        'Higher education': 4,
+        'Academic degree': 5
+    }
+    df['NAME_EDUCATION_TYPE'] = df['NAME_EDUCATION_TYPE'].map(education_mapping).astype(int)
+
+    df['NAME_TYPE_SUITE'] = accompanied(df, 'NAME_TYPE_SUITE')
+    df = weekday_encoding(df)
+
+    family_status_mapping = {
+        'Unknown': np.nan, 
+        'Single / not married': 1, 
+        'Separated': 1, 
+        'Widow': 1, 
+        'Married': 2,
+        'Civil marriage': 2
+    }
+    df['NAME_FAMILY_STATUS'] = df['NAME_FAMILY_STATUS'].map(family_status_mapping).astype(float)
+    
+    income_type_mapping = {
+        'Businessman': 2,
+        'Commercial associate': 2,
+        'State servant': 2,
+        'Working': 1,
+        'Student': 0.5,
+        'Maternity leave': 0, 
+        'Unemployed': 0,
+        'Pensioner': 0
+    }
+    df['NAME_INCOME_TYPE'] = df['NAME_INCOME_TYPE'].map(income_type_mapping).astype(float)
+
+    df['ORGANIZATION_TYPE'] = df['ORGANIZATION_TYPE'].apply(lambda x: 
+        1 if x == 'Business Entity Type 3' else 
+        2 if x == 'Self-employed' else 
+        np.nan if x == 'XNA' else 
+        3
+    ).astype(float)
+
+    occupation_mapping = {
+        'Managers': 1,
+        'High skill tech staff': 1,
+        'Core staff': 1,
+        'Laborers': 2,
+        'Drivers': 2,
+        'Sales staff': 2,
+        'Cooking staff': 3,
+        'Cleaning staff': 3,
+        'Security staff': 3,
+        'Low-skill laborers': 3,
+        'Medicine staff': 3,
+        'Private service staff': 3,
+        'Realty agents': 3
+    }
+    df['OCCUPATION_TYPE'] = df['OCCUPATION_TYPE'].map(occupation_mapping).astype(float)
+
+    df.drop(columns=[
+        'NAME_HOUSING_TYPE', 
+        'FONDKAPREMONT_MODE', 
+        'HOUSETYPE_MODE'
+    ], inplace=True)
+
+    return df
+
+
+def zero_variance_features(df):
+    variances = df.var()
+    zero_variances = variances[(variances == 0) | variances.isna()].index.tolist()
+
+    return zero_variances
+
+
+def categorize_card_activity(status):
+    if status in ['Active', 'Signed', 'Returned to the store', 'Demand']:
+        return 1
+    elif status in ['Approved']:
+        return 0
+    elif status in ['Completed', 'Amortized debt', 'Canceled']:
+        return 2
+    else:
+        return np.nan
+
+
+def categorize_risk_profile(status):
+    if status in ['Active', 'Signed', 'Approved', 'Completed']:
+        return 1
+    elif status in ['Amortized debt', 'Canceled']:
+        return 2
+    elif status in ['Demand', 'Returned to the store']:
+        return 3
+    else:
+        return np.nan

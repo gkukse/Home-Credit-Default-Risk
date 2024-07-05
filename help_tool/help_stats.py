@@ -18,60 +18,13 @@ from unidecode import unidecode
 import textblob
 from sklearn.metrics import matthews_corrcoef
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 pd.plotting.register_matplotlib_converters()
 
 
 """Statistics"""
 alpha = 0.05  # Significance level
 confidence_level = 0.95
-
-
-def csv_download(relative_path: str) -> pd.DataFrame:
-    """Download data."""
-    absolute_path = os.path.abspath(relative_path)
-    df = pd.read_csv(absolute_path, index_col=False, header=0)
-
-    return df
-
-
-def first_look(df: pd.DataFrame) -> None:
-    """Performs initial data set analysis."""
-    df_size = df.shape
-
-    df_type = df.dtypes.to_frame().T.rename(index={df.index[0]: 'dtypes'})
-    df_null = df.apply(lambda x: x.isna().sum()).to_frame().T.rename(
-        index={df.index[0]: 'Null values, Count'})
-
-    # Copy of df_null for Null %
-    df_null_proc = round(df_null / df_size[0] * 100, 1)
-    df_null_proc = df_null_proc.rename(
-        index={df_null.index[0]: 'Null values, %'})
-
-    info_df = pd.concat([df_type, df_null, df_null_proc])
-
-    print(f'Dataset has {df.shape[0]} observations and {df_size[1]} features')
-    print(
-        f'Columns with all empty values {df.columns[df.isna().all(axis=0)].tolist()}')
-    print(f'Dataset has {df.duplicated().sum()} duplicates')
-
-    return info_df.T
-
-
-
-
-def dummy_columns(df, feature_list):
-    """ Created a dummy and replaces the old feature with the new dummy """
-    df_dummies = pd.get_dummies(df[feature_list])
-    df_dummies = df_dummies.astype(int)
-
-    df = pd.concat([df, df_dummies], axis=1)
-    df.drop(columns=feature_list, inplace=True)
-
-    # Drop '_No' features and leave '_Yes'
-    # Replace the original column with new dummy
-    df = df.drop(columns=[col for col in df.columns if col.endswith('_No')])
-    df.columns = [col.replace('_Yes', '') for col in df.columns]
-    return df
 
 
 def phi_corr_matrix(df, feature_list):
@@ -96,29 +49,6 @@ def phi_corr_matrix(df, feature_list):
     plt.title(f'Phi Correlation Matrix of Binary Attributes')
     plt.show()
 
-
-def countplot_per_feature(df, feature_list):
-    for i, feature_to_exclude in enumerate(feature_list):
-        features_subset = [
-            feature for feature in feature_list if feature != feature_to_exclude]
-
-        """ Countplot for 5 features """
-        fig, axes = plt.subplots(
-            1, len(feature_list)-1, figsize=(20, 3))  # Changed the number of columns to 5
-
-        palette = 'rocket'
-
-        for i, feature in enumerate(features_subset):
-            sns.countplot(data=df, x=feature, hue=feature_to_exclude,
-                          ax=axes[i], palette=palette)
-            axes[i].get_legend().remove()
-            axes[i].tick_params(axis='x', rotation=45)
-
-        plt.tight_layout()
-        plt.suptitle("Binary feature analysis", size=16, y=1.02)
-        plt.legend(title=feature_to_exclude,
-                   bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.show()
 
 
 def chi_squared_test(df, feature_tuple):
@@ -157,7 +87,8 @@ def biserial_heatmap(df, continues_features, binary_features):
     correlation_matrix = correlation_matrix.apply(pd.to_numeric)
 
     sns.heatmap(pd.DataFrame(correlation_matrix),
-                annot=True, cmap="rocket", fmt=".2f")
+                #annot=True, 
+                cmap="rocket", fmt=".2f")
 
     plt.title("Biserial Correlation Heatmap")
 
@@ -207,164 +138,11 @@ def significance_t_test(df: pd.DataFrame, feature: str, change_feature: str,
             f'p-value = {p_value:.4f} between {feature} and {change_feature}. Fail to reject null hypothesis')
 
 
-def feature_transpose(df, feature_list):
-    """ Transpose a few features into a new dataframe"""
-    thresholds = df[feature_list].T
-    thresholds.reset_index(inplace=True)
-    thresholds.columns = thresholds.iloc[0]
-    thresholds.drop(thresholds.index[0], inplace=True)
+def vif(df):
+    """Calculating Variance Inflation Factor (VIF)."""
+    vif = pd.DataFrame()
+    vif["variables"] = df.columns
+    vif["VIF"] = [variance_inflation_factor(
+        df.values, i) for i in range(df.shape[1])]
 
-    return thresholds
-
-
-def cross_val_thresholds(fold, X, y, thresholds_df, classifiers):
-    """ Cross validation with threshold adjustments """
-    kf = KFold(n_splits=fold)
-    # Initialize lists to store metric scores and confusion matrices
-    metric_scores = {metric: {clf_name: [] for clf_name in classifiers.keys(
-    )} for metric in ['accuracy', 'precision', 'recall', 'f1']}
-    confusion_matrices = {clf_name: np.zeros(
-        (2, 2)) for clf_name in classifiers.keys()}
-
-    for train_index, val_index in kf.split(X):
-        X_train_i, X_val = X.iloc[train_index], X.iloc[val_index]
-        y_train_i, y_val = y.iloc[train_index], y.iloc[val_index]
-
-        for clf_name, clf in classifiers.items():
-            clf.fit(X_train_i, y_train_i)
-
-            # Threshold update
-            # Assuming binary classification
-            scores = clf.predict_proba(X_val)[:, 1]
-            optimal_threshold = thresholds_df[clf_name].iloc[0]
-            y_pred = (scores > optimal_threshold).astype(int)
-
-            # Calculate metrics
-            metric_scores['accuracy'][clf_name].append(
-                accuracy_score(y_val, y_pred))
-            metric_scores['precision'][clf_name].append(
-                precision_score(y_val, y_pred))
-            metric_scores['recall'][clf_name].append(
-                recall_score(y_val, y_pred))
-            metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
-
-            # Compute confusion matrix
-            cm = confusion_matrix(y_val, y_pred)
-            confusion_matrices[clf_name] += cm
-
-    # Calculate average scores
-    avg_metric_scores = {metric: {clf_name: np.mean(scores) for clf_name, scores in clf_scores.items(
-    )} for metric, clf_scores in metric_scores.items()}
-
-    # Average confusion matrices
-    avg_confusion_matrices = {
-        clf_name: matrix / fold for clf_name, matrix in confusion_matrices.items()}
-
-    cv_results = []
-    for clf_name, scores in avg_metric_scores['accuracy'].items():
-        cv_results.append({
-            'Classifier': classifiers[clf_name].__class__.__name__,
-            'CV Mean Accuracy': np.mean(scores),
-            'CV Mean Precision': np.mean(avg_metric_scores['precision'][clf_name]),
-            'CV Mean Recall': np.mean(avg_metric_scores['recall'][clf_name]),
-            'CV Mean F1': np.mean(avg_metric_scores['f1'][clf_name]),
-            'Confusion Matrix': avg_confusion_matrices[clf_name]
-        })
-
-    model_info = pd.DataFrame(cv_results)
-    return model_info
-
-
-def cross_validation_param(model_info):
-    """ Parameter heatmap """
-    heatmap_data = model_info
-
-    heatmap_data.set_index('Classifier', inplace=True)
-
-    sns.heatmap(heatmap_data, annot=True, fmt=".2f", linewidths=.5)
-    plt.title('Model Performance Metrics')
-    plt.show()
-
-
-def cross_validation_confusion_matrix(model_info):
-    """ Cross Validation Matrix """
-    f, ax = plt.subplots(2, 5, figsize=(15, 6))
-    ax = ax.flatten()
-
-    for i, row in model_info.iterrows():
-        cm = row['Confusion Matrix']
-        sns.heatmap(cm, ax=ax[i], annot=True, fmt='2.0f')
-        ax[i].set_title(f"Matrix for {row['Classifier']}")
-        ax[i].set_xlabel('Predicted Label')
-        ax[i].set_ylabel('True Label')
-
-    plt.subplots_adjust(hspace=0.5, wspace=0.5)
-    plt.show()
-
-
-def predict_proba_available(model, X_validation):
-    """ Check if predict_proba is available. """
-    if hasattr(model, 'predict_proba'):
-        y_proba = model.predict_proba(X_validation)[:, 1] 
-    else:
-        y_proba = model.predict(X_validation) 
-
-    return y_proba
-
-
-def model_confusion_matrix(model, X_validation, y_validation, y_pred):
-    conf_matrix = confusion_matrix(y_validation, model.predict(X_validation))
-
-
-    accuracy = accuracy_score(y_validation, y_pred)
-    precision = precision_score(y_validation, y_pred)
-    recall = recall_score(y_validation, y_pred)
-
-
-    print(f'Accuracy: {accuracy:.2f}')
-    print(f'Precision: {precision:.2f}')
-    print(f'Recall: {recall:.2f}')
-
-    sns.heatmap(conf_matrix, annot=True, fmt='d', 
-            xticklabels=['0', '1'], 
-            yticklabels=['0', '1'])
-    plt.xlabel('Predicted Labels')
-    plt.ylabel('True Labels')
-    plt.title('Confusion Matrix - Voting Classifier')
-    plt.show()
-
-
-def encode_weekday(day_of_week):
-    """Encode weekday using sine and cosine functions."""
-    weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
-    # Get the index of the weekday
-    index = weekdays.index(day_of_week.upper())
-    # Convert index to radians
-    radians = (index / 7.0) * 2 * np.pi
-    # Encode using sine and cosine
-    sin_encoding = np.sin(radians)
-    cos_encoding = np.cos(radians)
-    return sin_encoding, cos_encoding
-
-# # Assuming df is your DataFrame with the column 'WEEKDAY_APPR_PROCESS_START'
-# # Encode weekday for the 'WEEKDAY_APPR_PROCESS_START' column
-# sin_encoding, cos_encoding = zip(*application_train['WEEKDAY_APPR_PROCESS_START'].apply(encode_weekday))
-
-# # Add encoded features to the DataFrame
-# application_train['WEEKDAY_APPR_PROCESS_START_sin'] = sin_encoding
-# application_train['WEEKDAY_APPR_PROCESS_START_cos'] = cos_encoding
-
-# # Display the modified DataFrame
-# print(application_train.head())
-
-
-def encode_weekday_sin(day_of_week):
-    """Encode weekday using sine function."""
-    weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
-    # Get the index of the weekday
-    index = weekdays.index(day_of_week.upper())
-    # Convert index to radians
-    radians = (index / 7.0) * 2 * np.pi
-    # Encode using sine function
-    sin_encoding = np.sin(radians)
-    return sin_encoding
+    return (vif)
