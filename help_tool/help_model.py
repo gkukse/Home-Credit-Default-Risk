@@ -13,9 +13,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import precision_score, roc_auc_score, recall_score, accuracy_score
-
-from sklearn.model_selection import train_test_split
-from lightgbm import LGBMClassifier
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import featuretools as ft
 
 #from help_tool 
@@ -25,11 +23,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
-import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
-from lightgbm import LGBMClassifier, early_stopping, log_evaluation
+from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping, log_evaluation
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module='featuretools.computational_backends.feature_set_calculator')
@@ -86,11 +82,100 @@ def aggregated_features(df, id):
     
     return df_feature_matrix
 
+def model_feature_importance_exteranal(df):
 
-def model_feature_importance(df):
+    df.dropna(subset='EXT_SOURCE_1', inplace=True)
+
+    y = df['EXT_SOURCE_1']
+    X = df.drop(columns=['TARGET', 'EXT_SOURCE_1', 'SK_ID_CURR', 'SK_ID_PREV'])
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    numerical_features = X.select_dtypes(include=['number']).columns.tolist()
+
+    # Preprocessing for numerical data
+    numerical_transformer = StandardScaler()
+
+    # Preprocessing for categorical data
+    categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+
+    # Bundle preprocessing for numerical and categorical data
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numerical_transformer, numerical_features),
+            #('cat', categorical_transformer, categorical_features)
+        ])
+
+    params = {
+        'objective': 'regression',
+        'metric': 'rmse',
+        'boosting_type': 'gbdt',
+        'num_leaves': 31,
+        'learning_rate': 0.05,
+        'verbose': 0,
+    }
+
+    # Define the model
+    model = LGBMRegressor(**params, n_estimators=100)
+
+    # Create and evaluate the pipeline
+    pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('model', model)
+    ])
+
+    pipeline.fit(X_train, y_train)
+
+    # Predict on the test set
+    y_pred = pipeline.predict(X_test)
+
+    # Evaluate the model
+    mae = mean_absolute_error(y_test, y_pred)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    # Store the metrics in a dictionary
+    metrics = {
+        'MAE': mae,
+        'MSE': mse,
+        'R2': r2
+    }
+
+    # Convert the dictionary to a DataFrame
+    metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
+
+    # Reshape the DataFrame to have a single row
+    metrics_df = metrics_df.set_index('Metric').T
+
+    # Plot the heatmap with annotations
+    plt.figure(figsize=(6, 2))
+    sns.heatmap(metrics_df, annot=True, fmt=".3f", cmap="coolwarm", cbar=False)
+    plt.title("Model Evaluation Metrics")
+    plt.show()
+
+    # Extract feature importance
+    model = pipeline.named_steps['model']
+    feature_importances = model.feature_importances_
+
+    # Get the feature names from the preprocessor
+    feature_names = numerical_features #+ list(pipeline.named_steps['preprocessor'].transformers_[1][1].get_feature_names_out(categorical_features))
+
+    # Create a DataFrame for feature importances
+    feature_importance = pd.DataFrame({
+        'feature': feature_names,
+        'importance': feature_importances
+    })
+
+    # Sort the DataFrame by importance
+    feature_importance = feature_importance.sort_values(by='importance', ascending=False)
+    
+    return feature_importance
+
+
+def model_feature_importance_target(df):
 
     y = df['TARGET']
-    X = df.drop(columns=['TARGET', 'SK_ID_CURR', 'SK_ID_PREV'])
+    X = df.drop(columns=['TARGET', 'EXT_SOURCE_1', 'SK_ID_CURR', 'SK_ID_PREV'])
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 

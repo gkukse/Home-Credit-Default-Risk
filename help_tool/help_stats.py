@@ -90,11 +90,26 @@ def biserial_heatmap(df, continues_features, binary_features):
                 #annot=True, 
                 cmap="rocket", fmt=".2f")
 
-    plt.title("Biserial Correlation Heatmap")
+    plt.title(f"Biserial Correlation Heatmap")
 
     plt.show()
 
 
+def pearson_heatmap(df, continuous_features, target_continuous_feature):
+    """ Pearson correlation for continuous features against a target continuous feature. """
+    correlation_matrix = pd.DataFrame(index=[target_continuous_feature], columns=continuous_features)
+
+    for continuous_feature in continuous_features:
+        pearson_corr, _ = stats.pearsonr(df[target_continuous_feature], df[continuous_feature])
+        correlation_matrix.loc[target_continuous_feature, continuous_feature] = pearson_corr
+
+    correlation_matrix = correlation_matrix.apply(pd.to_numeric)
+
+    sns.heatmap(correlation_matrix, annot=True, cmap="rocket", fmt=".2f")
+    plt.title(f"Pearson Correlation Heatmap for {target_continuous_feature}")
+    plt.show()
+
+    
 def confidence_intervals(data, type) -> None:
     """Calculate Confidence Intervals for a given dataset."""
 
