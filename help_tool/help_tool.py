@@ -416,7 +416,7 @@ def encode_categories(df):
     df['NAME_EDUCATION_TYPE'] = df['NAME_EDUCATION_TYPE'].map(education_mapping).astype(int)
 
     df['NAME_TYPE_SUITE'] = accompanied(df, 'NAME_TYPE_SUITE')
-    df = weekday_encoding(df)
+    #df = weekday_encoding(df)
 
     family_status_mapping = {
         'Unknown': np.nan, 

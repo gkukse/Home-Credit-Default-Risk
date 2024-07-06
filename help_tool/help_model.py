@@ -45,10 +45,15 @@ def zero_variance_features(df):
 
 
 def aggregated_features(df, id):
-    if id == 'SK_ID_PREV':
+    # if id in ['SK_ID_PREV', 'SK_ID_BUREAU']:
+    #     try: 
+    #         df = df.drop(columns=['SK_ID_CURR'])
+    #     except: pass
+    if id != 'SK_ID_CURR':
+        df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
         df = df.drop(columns=['SK_ID_CURR'])
-
-    df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
+    else:
+        df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
 
 
     # Creating new aggregated features
@@ -179,16 +184,23 @@ def model_feature_importance_exteranal(df):
 
 def model_feature_importance_target(df):
 
+    try: 
+        df = df.drop(columns=['EXT_SOURCE_1'])
+    except: pass
+
+    try: 
+        df = df.drop(columns=['SK_ID_PREV'])
+    except: pass
+
+    try: 
+        df = df.drop(columns=['SK_ID_BUREAU'])
+    except: pass
+
+
     y = df['TARGET']
     X = df.drop(columns=['TARGET', 'SK_ID_CURR'])
 
-    try: 
-        X = df.drop(columns=['EXT_SOURCE_1'])
-    except: pass
 
-    try: 
-        X = df.drop(columns=['SK_ID_PREV'])
-    except: pass
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
