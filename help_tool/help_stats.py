@@ -26,6 +26,7 @@ pd.plotting.register_matplotlib_converters()
 alpha = 0.05  # Significance level
 confidence_level = 0.95
 
+cmap='rocket'
 
 def phi_corr_matrix(df, feature_list):
     """Compute and visualize Phi correlation matrix for binary features"""
@@ -38,15 +39,16 @@ def phi_corr_matrix(df, feature_list):
             feature2 = feature_list[j]
             corr_coef = matthews_corrcoef(df[feature1], df[feature2])
             corr_matrix.loc[feature1, feature2] = corr_coef
+            corr_matrix.loc[feature2, feature1] = corr_coef
 
-    # Filter to upper or lower triangular part based on the parameter
-    mask = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
-    filtered_matrix = corr_matrix.where(mask)
+    # Filter to lower triangular part
+    mask = np.triu(np.ones(corr_matrix.shape), k=0).astype(bool)
+    filtered_matrix = corr_matrix.mask(mask)
 
     # Plot the correlation matrix
     sns.heatmap(filtered_matrix.astype(float), annot=True, annot_kws={"size": 8},
-                cmap='rocket', fmt=".2f", vmin=-1, vmax=1)  # Adjust vmin and vmax as needed
-    plt.title(f'Phi Correlation Matrix of Binary Attributes')
+                cmap=cmap, fmt=".2f", vmin=-1, vmax=1)  # Adjust vmin and vmax as needed
+    plt.title('Phi Correlation Matrix of Binary Attributes')
     plt.show()
 
 
@@ -87,8 +89,7 @@ def biserial_heatmap(df, continues_features, binary_features):
     correlation_matrix = correlation_matrix.apply(pd.to_numeric)
 
     sns.heatmap(pd.DataFrame(correlation_matrix),
-                #annot=True, 
-                cmap="rocket", fmt=".2f")
+                cmap=cmap, fmt=".2f")
 
     plt.title(f"Biserial Correlation Heatmap")
 
@@ -105,7 +106,7 @@ def pearson_heatmap(df, continuous_features, target_continuous_feature):
 
     correlation_matrix = correlation_matrix.apply(pd.to_numeric)
 
-    sns.heatmap(correlation_matrix, annot=True, cmap="rocket", fmt=".2f")
+    sns.heatmap(correlation_matrix, annot=True, cmap=cmap, fmt=".2f")
     plt.title(f"Pearson Correlation Heatmap for {target_continuous_feature}")
     plt.show()
 
@@ -151,6 +152,20 @@ def significance_t_test(df: pd.DataFrame, feature: str, change_feature: str,
     else:
         print(
             f'p-value = {p_value:.4f} between {feature} and {change_feature}. Fail to reject null hypothesis')
+
+
+
+def pearson_correlation_test(df, feature, change_feature):
+
+    correlation, p_value = stats.pearsonr(df[feature], df[change_feature])
+    
+    if p_value < alpha:
+        print(
+            f'p-value = {p_value:.4f} between {feature} and {change_feature}. Reject null hypothesis')
+    else:
+        print(
+            f'p-value = {p_value:.4f} between {feature} and {change_feature}. Fail to reject null hypothesis')
+
 
 
 def vif(df):

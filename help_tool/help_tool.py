@@ -25,6 +25,7 @@ pd.plotting.register_matplotlib_converters()
 alpha = 0.05  # Significance level
 confidence_level = 0.95
 
+cmap='rocket'
 
 def csv_download(relative_path: str) -> pd.DataFrame:
     """Download data."""
@@ -94,7 +95,7 @@ def heatmap(df: pd.DataFrame, name: str, method: str) -> None:
     plt.figure(figsize=(8, 5))
     corr_matrix = df.corr(method=method)
     mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f',
+    sns.heatmap(corr_matrix, annot=True, cmap=cmap, fmt='.2f',
                 vmin=-1, vmax=1, mask=mask)
     plt.title(f'Correlation {name.capitalize()} Attributes')
     plt.show()
@@ -464,16 +465,22 @@ def encode_categories(df):
     }
     df['OCCUPATION_TYPE'] = df['OCCUPATION_TYPE'].map(occupation_mapping).astype(float)
 
+    df[[
+        'YEARS_BIRTH', 'YEARS_EMPLOYED', 'YEARS_ID_PUBLISH', 'YEARS_LAST_PHONE_CHANGE'
+        ]] = df[['DAYS_BIRTH', 'DAYS_EMPLOYED', 'DAYS_ID_PUBLISH', 'DAYS_LAST_PHONE_CHANGE']] / - 365
+
     df.drop(columns=[
         'NAME_HOUSING_TYPE', 
         'FONDKAPREMONT_MODE', 
-        'HOUSETYPE_MODE'
+        'HOUSETYPE_MODE', 'DAYS_BIRTH', 'DAYS_EMPLOYED', 'DAYS_ID_PUBLISH', 'DAYS_LAST_PHONE_CHANGE'
     ], inplace=True)
 
     return df
 
 
+
 def zero_variance_features(df):
+
     variances = df.var()
     zero_variances = variances[(variances == 0) | variances.isna()].index.tolist()
 
@@ -536,3 +543,18 @@ def product_place(status):
         return 'other'
     else:
         return status
+    
+
+def bucket_age_feature(df, age_feature):
+    bins = [0, 9, 19, 29, 39, 49, 59, 69, 79, 89, 99, float('inf')]
+    labels = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+    df[f'{age_feature}'] = pd.cut(df[age_feature], bins=bins, labels=labels, right=True, include_lowest=True)
+    
+    return df[f'{age_feature}'].astype(float)
+
+def equal_frequency_bucketing(df, feature, num_buckets):
+    labels = [(i+1) for i in range(num_buckets)]
+    df[feature] = pd.qcut(df[feature], q=num_buckets, labels=labels)
+    
+    return df[feature].astype(float) 

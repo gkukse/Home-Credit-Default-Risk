@@ -50,8 +50,11 @@ def aggregated_features(df, id):
     #         df = df.drop(columns=['SK_ID_CURR'])
     #     except: pass
     if id != 'SK_ID_CURR':
-        df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
-        df = df.drop(columns=['SK_ID_CURR'])
+        try:
+            df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
+            df = df.drop(columns=['SK_ID_CURR'])
+        except:
+            df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
     else:
         df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
 
@@ -94,10 +97,17 @@ def aggregated_features(df, id):
 
 def model_feature_importance_exteranal(df):
 
-    df.dropna(subset='EXT_SOURCE_1', inplace=True)
+    df_filtered = df.dropna(subset='EXT_SOURCE_1')
 
-    y = df['EXT_SOURCE_1']
-    X = df.drop(columns=['TARGET', 'EXT_SOURCE_1', 'SK_ID_CURR', 'SK_ID_PREV'])
+    try:
+        df_filtered = df_filtered.drop(columns='SK_ID_PREV')
+    except:
+        df_filtered = df_filtered
+
+
+
+    y = df_filtered['EXT_SOURCE_1']
+    X = df_filtered.drop(columns=['TARGET', 'EXT_SOURCE_1', 'SK_ID_CURR'])
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -183,10 +193,6 @@ def model_feature_importance_exteranal(df):
 
 
 def model_feature_importance_target(df):
-
-    try: 
-        df = df.drop(columns=['EXT_SOURCE_1'])
-    except: pass
 
     try: 
         df = df.drop(columns=['SK_ID_PREV'])
