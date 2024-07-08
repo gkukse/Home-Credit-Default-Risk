@@ -4,18 +4,21 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import missingno as msno
 
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, KFold
+
 from sklearn.feature_selection import mutual_info_classif
 
 pd.plotting.register_matplotlib_converters()
-
+from sklearn.model_selection import StratifiedKFold
 import duckdb
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.metrics import precision_score, roc_auc_score, recall_score, accuracy_score
+from sklearn.metrics import precision_score, roc_auc_score, recall_score, accuracy_score, f1_score
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import featuretools as ft
-
+from sklearn.impute import SimpleImputer
+import optuna
 #from help_tool 
 #import help_tool, help_visuals, help_stats, help_model
 import polars as pl
@@ -97,12 +100,15 @@ def aggregated_features(df, id):
 
 def model_feature_importance_exteranal(df):
 
-    df_filtered = df.dropna(subset='EXT_SOURCE_1')
+    try: 
+        df_filtered = df.dropna(subset='EXT_SOURCE_1')
+    except:
+        df_filtered = df
 
     try:
         df_filtered = df_filtered.drop(columns='SK_ID_PREV')
     except:
-        df_filtered = df_filtered
+        pass
 
 
 
@@ -380,3 +386,123 @@ def clustering_k_means_test(df):
     plt.title('Silhouette Score for Optimal k')
 
     plt.show()
+
+
+
+def optimize_hyperparameters(classifier_name, model, param_grid, X, y):
+    def objective(trial):
+        param_dict = {}
+        for key, values in param_grid.items():
+            param_dict[key] = trial.suggest_categorical(key, values)
+        
+        model.set_params(**param_dict)
+        
+        # Example pipeline (replace with your actual pipeline if any)
+        pipeline = Pipeline([
+            ('imputer', SimpleImputer(strategy='mean')),  # Impute missing values with mean
+            ('scaler', StandardScaler()),  # Standardize features
+            ('clf', model)  # Classifier
+        ])
+        
+        # Example metric (replace with your actual metric)
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        
+        # Convert to NumPy arrays
+        X_np = X.values if hasattr(X, 'values') else X
+        y_np = y.values if hasattr(y, 'values') else y
+        
+        scores = []
+        for train_index, test_index in cv.split(X_np, y_np):
+            X_train, X_test = X_np[train_index], X_np[test_index]
+            y_train, y_test = y_np[train_index], y_np[test_index]
+            
+            # Calculate sample weights for the training set
+            class_weights = np.bincount(y_train) / len(y_train)
+            sample_weights = np.where(y_train == 0, 1 / class_weights[0], 1 / class_weights[1])
+            
+            # Fit pipeline with sample weights
+            pipeline.fit(X_train, y_train, clf__sample_weight=sample_weights)
+            
+            # Predict on test set
+            y_pred = pipeline.predict(X_test)
+            
+            # Evaluate recall on test set
+            score = f1_score(y_test, y_pred)
+            scores.append(score)
+
+        
+        
+        return np.mean(scores)
+    
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=5)
+    
+    print(f"Best {classifier_name} parameters: {study.best_params}")
+    print(f"Best {classifier_name} f1_score: {study.best_value:.2f}")
+    
+    return study.best_params
+
+
+
+
+    """ Cross validation with threshold adjustments and feature scaling """
+    kf = KFold(n_splits=fold, shuffle=True, random_state=42)
+
+    # Initialize lists to store metric scores and confusion matrices
+    metric_scores = {metric: {clf_name: [] for clf_name in classifiers.keys()}
+                     for metric in ['accuracy', 'precision', 'recall', 'f1']}
+    confusion_matrices = {clf_name: np.zeros(
+        (2, 2)) for clf_name in classifiers.keys()}
+
+    for train_index, val_index in kf.split(X):
+        X_train_i, X_val = X.iloc[train_index], X.iloc[val_index]
+        y_train_i, y_val = y.iloc[train_index], y.iloc[val_index]
+
+        # Initialize and fit StandardScaler on training data
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train_i)
+        X_val_scaled = scaler.transform(X_val)
+
+        for clf_name, clf in classifiers.items():
+            clf.fit(X_train_scaled, y_train_i)
+
+            # Threshold update
+            scores = help_tool.predict_proba_available(clf, X_val_scaled)
+
+            optimal_threshold = thresholds_df[clf_name].iloc[0]
+            y_pred = (scores > optimal_threshold).astype(int)
+
+            # Calculate metrics
+            metric_scores['accuracy'][clf_name].append(
+                accuracy_score(y_val, y_pred))
+            metric_scores['precision'][clf_name].append(
+                precision_score(y_val, y_pred))
+            metric_scores['recall'][clf_name].append(
+                recall_score(y_val, y_pred))
+            metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
+
+            # Compute confusion matrix
+            cm = confusion_matrix(y_val, y_pred)
+            confusion_matrices[clf_name] += cm
+
+    # Calculate average scores
+    avg_metric_scores = {metric: {clf_name: np.mean(scores) for clf_name, scores in clf_scores.items()}
+                         for metric, clf_scores in metric_scores.items()}
+
+    # Average confusion matrices
+    avg_confusion_matrices = {
+        clf_name: matrix / fold for clf_name, matrix in confusion_matrices.items()}
+
+    cv_results = []
+    for clf_name, scores in avg_metric_scores['accuracy'].items():
+        cv_results.append({
+            'Classifier': classifiers[clf_name].__class__.__name__,
+            'CV Mean Accuracy': np.mean(scores),
+            'CV Mean Precision': np.mean(avg_metric_scores['precision'][clf_name]),
+            'CV Mean Recall': np.mean(avg_metric_scores['recall'][clf_name]),
+            'CV Mean F1': np.mean(avg_metric_scores['f1'][clf_name]),
+            'Confusion Matrix': avg_confusion_matrices[clf_name]
+        })
+
+    model_info = pd.DataFrame(cv_results)
+    return model_info

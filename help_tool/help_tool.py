@@ -235,6 +235,24 @@ def cross_validation_confusion_matrix(model_info):
     plt.show()
 
 
+def plot_single_confusion_matrix(model_info):
+    """ Plot Confusion Matrix for a Specific Classifier """
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+
+    # Plot the heatmap
+    sns.heatmap(model_info['Confusion Matrix'][0], ax=ax, annot=True, cmap=cmap, fmt='2.0f')
+
+    ax.set_title(f"Confusion Matrix for {model_info['Classifier'][0]}")
+    ax.set_xlabel('Predicted Label')
+    ax.set_ylabel('True Label')
+
+    plt.tight_layout()
+    plt.show()
+    
+
+
+
 def predict_proba_available(model, X_validation):
     """ Check if predict_proba is available. """
     if hasattr(model, 'predict_proba'):
