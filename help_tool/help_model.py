@@ -48,10 +48,7 @@ def zero_variance_features(df):
 
 
 def aggregated_features(df, id):
-    # if id in ['SK_ID_PREV', 'SK_ID_BUREAU']:
-    #     try: 
-    #         df = df.drop(columns=['SK_ID_CURR'])
-    #     except: pass
+
     if id != 'SK_ID_CURR':
         try:
             df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
@@ -90,12 +87,55 @@ def aggregated_features(df, id):
 
 
     # Dropping Zero variance features
-    df_feature_matrix.drop(
-        columns= zero_variance_features(df_feature_matrix), 
-        inplace = True
-        )
+    # df_feature_matrix.drop(
+    #     columns= zero_variance_features(df_feature_matrix), 
+    #     inplace = True
+    #     )
     
     return df_feature_matrix
+
+
+
+def aggregated_features_sum(df, id):
+
+    if id != 'SK_ID_CURR':
+        try:
+            df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
+            df = df.drop(columns=['SK_ID_CURR'])
+        except:
+            df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
+    else:
+        df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
+
+
+    # Creating new aggregated features
+
+    es = ft.EntitySet(id='df_data')
+
+    es = es.add_dataframe(dataframe_name='df_simplified',
+                        dataframe=df_simplified,
+                        index=f'{id}')
+
+    es = es.add_dataframe(dataframe_name='df',
+                        dataframe=df.reset_index(drop=True),
+                        make_index=True,
+                        index='index')
+
+    es = es.add_relationship(parent_dataframe_name='df_simplified',
+                            parent_column_name=f'{id}',
+                            child_dataframe_name='df',
+                            child_column_name=f'{id}')
+
+    df_feature_matrix, feature_defs = ft.dfs(entityset=es,
+                                        target_dataframe_name='df_simplified',
+                                        agg_primitives=['sum']
+                                        )
+
+
+    df_feature_matrix = df_feature_matrix.reset_index()
+
+    return df_feature_matrix
+
 
 
 def model_feature_importance_exteranal(df):
@@ -200,6 +240,8 @@ def model_feature_importance_exteranal(df):
 
 def model_feature_importance_target(df):
 
+    df = df.dropna(subset='TARGET')
+
     try: 
         df = df.drop(columns=['SK_ID_PREV'])
     except: pass
@@ -217,6 +259,7 @@ def model_feature_importance_target(df):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     numerical_features = X.select_dtypes(include=['number']).columns.tolist()
+    categorical_features = X.select_dtypes(include=['object']).columns.tolist()
 
     # Preprocessing for numerical data
     numerical_transformer = StandardScaler()
@@ -228,11 +271,9 @@ def model_feature_importance_target(df):
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numerical_transformer, numerical_features),
-            #('cat', categorical_transformer, categorical_features)
+            ('cat', categorical_transformer, categorical_features)
         ])
 
-    class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
-    class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
 
     params = {
         'objective': 'binary',
@@ -241,7 +282,7 @@ def model_feature_importance_target(df):
         'num_leaves': 31,
         'learning_rate': 0.05,
         'verbose': 0,
-        'class_weight': class_weight_dict 
+        'class_weight': 'balanced' 
     }
 
     # Define the model
@@ -289,14 +330,20 @@ def model_feature_importance_target(df):
     model = pipeline.named_steps['model']
     feature_importances = model.feature_importances_
 
+    try:
+        feature_names = numerical_features + list(pipeline.named_steps['preprocessor'].named_transformers_['cat'].get_feature_names_out(categorical_features))
+    except: 
+        feature_names = numerical_features 
+
     # Create a DataFrame for feature importances
     feature_importance = pd.DataFrame({
-        'feature': numerical_features,
+        'feature': feature_names,
         'importance': feature_importances
     })
 
     # Sort the DataFrame by importance
     feature_importance = feature_importance.sort_values(by='importance', ascending=False)
+    
     return feature_importance
 
 

@@ -366,11 +366,10 @@ def contract_status(df, target_feature):
 def payment_type(df, target_feature):
     #target_feature = 'NAME_PAYMENT_TYPE'
 
-    df.loc[df[target_feature] == 'Cash through the bank', 'new_feature'] = 1
-    df.loc[~df[target_feature].isin(['Cash through the bank', 'XNA']), 'new_feature'] = 0
-    df.drop(columns=[target_feature], inplace=True)
+    df.loc[df[target_feature] == 'Cash through the bank', target_feature] = 1
+    df.loc[~df[target_feature].isin(['Cash through the bank', 'XNA']), target_feature] = 0
 
-    return df['new_feature']
+    return df[target_feature]
 
 def encode_weekday_sin(day_of_week):
     """Encode weekday using sine function."""
@@ -576,3 +575,21 @@ def equal_frequency_bucketing(df, feature, num_buckets):
     df[feature] = pd.qcut(df[feature], q=num_buckets, labels=labels)
     
     return df[feature].astype(float) 
+
+
+
+
+def previous_application_cleaning(df):
+
+    df = product_combination(df)
+    df['NAME_CLIENT_TYPE'] = client_type_encoding(df, 'NAME_CLIENT_TYPE')
+    df['NAME_TYPE_SUITE'] = accompanied(df, 'NAME_TYPE_SUITE')
+    df['NAME_YIELD_GROUP'] = df['NAME_YIELD_GROUP'].apply(yield_group)
+    df['CONTRACT_STATUS'] = contract_status(df, 'NAME_CONTRACT_STATUS')
+
+    df['NAME_GOODS_CATEGORY'] = top_five_categories(df, 'NAME_GOODS_CATEGORY', 3)
+    df['PAYMENT_TYPE_Cash_through_the_bank'] = payment_type(df, 'NAME_PAYMENT_TYPE')
+
+    df['NAME_PRODUCT_TYPE'] = df['NAME_PRODUCT_TYPE'].apply(product_type)
+
+    return df
