@@ -1,25 +1,16 @@
-"""Helper module for EDA notebook to perform 
-data cleaning and preprocessing"""
-
-
-from scipy.stats import chi2_contingency
 import os
-from typing import Optional, Any
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
-from scipy import stats
-from sklearn.metrics import (accuracy_score, auc, confusion_matrix, roc_curve)
-from sklearn.model_selection import KFold
-from unidecode import unidecode
-import textblob
-from sklearn.metrics import matthews_corrcoef
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
-pd.plotting.register_matplotlib_converters()
 
+from sklearn.metrics import (accuracy_score, confusion_matrix,
+                             precision_score, recall_score
+                             )
+
+
+pd.plotting.register_matplotlib_converters()
 
 """Statistics"""
 alpha = 0.05  # Significance level
@@ -101,7 +92,7 @@ def heatmap(df: pd.DataFrame, name: str, method: str) -> None:
     plt.show()
 
 
-def dummy_columns(df, feature_list):
+def dummy_columns(df: pd.DataFrame, feature_list: list):
     """ Created a dummy and replaces the old feature with the new dummy """
     df_dummies = pd.get_dummies(df[feature_list])
     df_dummies = df_dummies.astype(int)
@@ -115,97 +106,6 @@ def dummy_columns(df, feature_list):
     df.columns = [col.replace('_Yes', '') for col in df.columns]
     return df
 
-
-def countplot_per_feature(df, feature_list):
-    for i, feature_to_exclude in enumerate(feature_list):
-        features_subset = [
-            feature for feature in feature_list if feature != feature_to_exclude]
-
-        """ Countplot for 5 features """
-        fig, axes = plt.subplots(
-            1, len(feature_list)-1, figsize=(20, 3))  # Changed the number of columns to 5
-
-        palette = 'rocket'
-
-        for i, feature in enumerate(features_subset):
-            sns.countplot(data=df, x=feature, hue=feature_to_exclude,
-                          ax=axes[i], palette=palette)
-            axes[i].get_legend().remove()
-            axes[i].tick_params(axis='x', rotation=45)
-
-        plt.tight_layout()
-        plt.suptitle("Binary feature analysis", size=16, y=1.02)
-        plt.legend(title=feature_to_exclude,
-                   bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.show()
-
-
-def feature_transpose(df, feature_list):
-    """ Transpose a few features into a new dataframe"""
-    thresholds = df[feature_list].T
-    thresholds.reset_index(inplace=True)
-    thresholds.columns = thresholds.iloc[0]
-    thresholds.drop(thresholds.index[0], inplace=True)
-
-    return thresholds
-
-
-def cross_val_thresholds(fold, X, y, thresholds_df, classifiers):
-    """ Cross validation with threshold adjustments """
-    kf = KFold(n_splits=fold)
-    # Initialize lists to store metric scores and confusion matrices
-    metric_scores = {metric: {clf_name: [] for clf_name in classifiers.keys(
-    )} for metric in ['accuracy', 'precision', 'recall', 'f1']}
-    confusion_matrices = {clf_name: np.zeros(
-        (2, 2)) for clf_name in classifiers.keys()}
-
-    for train_index, val_index in kf.split(X):
-        X_train_i, X_val = X.iloc[train_index], X.iloc[val_index]
-        y_train_i, y_val = y.iloc[train_index], y.iloc[val_index]
-
-        for clf_name, clf in classifiers.items():
-            clf.fit(X_train_i, y_train_i)
-
-            # Threshold update
-            # Assuming binary classification
-            scores = clf.predict_proba(X_val)[:, 1]
-            optimal_threshold = thresholds_df[clf_name].iloc[0]
-            y_pred = (scores > optimal_threshold).astype(int)
-
-            # Calculate metrics
-            metric_scores['accuracy'][clf_name].append(
-                accuracy_score(y_val, y_pred))
-            metric_scores['precision'][clf_name].append(
-                precision_score(y_val, y_pred))
-            metric_scores['recall'][clf_name].append(
-                recall_score(y_val, y_pred))
-            metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
-
-            # Compute confusion matrix
-            cm = confusion_matrix(y_val, y_pred)
-            confusion_matrices[clf_name] += cm
-
-    # Calculate average scores
-    avg_metric_scores = {metric: {clf_name: np.mean(scores) for clf_name, scores in clf_scores.items(
-    )} for metric, clf_scores in metric_scores.items()}
-
-    # Average confusion matrices
-    avg_confusion_matrices = {
-        clf_name: matrix / fold for clf_name, matrix in confusion_matrices.items()}
-
-    cv_results = []
-    for clf_name, scores in avg_metric_scores['accuracy'].items():
-        cv_results.append({
-            'Classifier': classifiers[clf_name].__class__.__name__,
-            'CV Mean Accuracy': np.mean(scores),
-            'CV Mean Precision': np.mean(avg_metric_scores['precision'][clf_name]),
-            'CV Mean Recall': np.mean(avg_metric_scores['recall'][clf_name]),
-            'CV Mean F1': np.mean(avg_metric_scores['f1'][clf_name]),
-            'Confusion Matrix': avg_confusion_matrices[clf_name]
-        })
-
-    model_info = pd.DataFrame(cv_results)
-    return model_info
 
 
 def cross_validation_param(model_info):
@@ -221,7 +121,7 @@ def cross_validation_param(model_info):
 
 def cross_validation_confusion_matrix(model_info):
     """ Cross Validation Matrix """
-    f, ax = plt.subplots(2, 5, figsize=(15, 6))
+    f, ax = plt.subplots(1, 2, figsize=(8, 3))
     ax = ax.flatten()
 
     for i, row in model_info.iterrows():
@@ -233,23 +133,6 @@ def cross_validation_confusion_matrix(model_info):
 
     plt.subplots_adjust(hspace=0.5, wspace=0.5)
     plt.show()
-
-
-def plot_single_confusion_matrix(model_info):
-    """ Plot Confusion Matrix for a Specific Classifier """
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-
-    # Plot the heatmap
-    sns.heatmap(model_info['Confusion Matrix'][0], ax=ax, annot=True, cmap=cmap, fmt='2.0f')
-
-    ax.set_title(f"Confusion Matrix for {model_info['Classifier'][0]}")
-    ax.set_xlabel('Predicted Label')
-    ax.set_ylabel('True Label')
-
-    plt.tight_layout()
-    plt.show()
-    
 
 
 

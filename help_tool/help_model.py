@@ -2,52 +2,43 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import missingno as msno
+import featuretools as ft
+import polars as pl
 
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, KFold
-
-from sklearn.feature_selection import mutual_info_classif
-
-pd.plotting.register_matplotlib_converters()
-from sklearn.model_selection import StratifiedKFold
-import duckdb
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.metrics import precision_score, roc_auc_score, recall_score, accuracy_score, f1_score
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import featuretools as ft
-from sklearn.impute import SimpleImputer
-import optuna
-#from help_tool 
-#import help_tool, help_visuals, help_stats, help_model
-import polars as pl
-from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, 
+                             roc_auc_score, confusion_matrix, mean_absolute_error, 
+                             mean_squared_error, r2_score)
 
-from sklearn.model_selection import train_test_split
-from sklearn.utils import class_weight
-from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping, log_evaluation
+
+from lightgbm import LGBMClassifier, LGBMRegressor
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module='featuretools.computational_backends.feature_set_calculator')
 
+# Pandas options
 pd.set_option('future.no_silent_downcasting', True)
 
-# Setting graph parameters
+# Seaborn settings
 sns.set_theme(style='whitegrid')
 sns.set_palette('husl')
 
 
-def zero_variance_features(df):
+def zero_variance_features(df: pd.DataFrame):
+    """ Returns list of low variance features"""
     variances = df.var()
     zero_variances = variances[(variances < 0.1) | variances.isna()].index.tolist()
 
     return zero_variances
 
 
-def aggregated_features(df, id):
+def aggregated_features(df: pd.DataFrame, id: str):
+    """ Aggregates and returns feature derivatives """
 
     if id != 'SK_ID_CURR':
         try:
@@ -58,8 +49,6 @@ def aggregated_features(df, id):
     else:
         df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
 
-
-    # Creating new aggregated features
 
     es = ft.EntitySet(id='df_data')
 
@@ -84,64 +73,16 @@ def aggregated_features(df, id):
 
 
     df_feature_matrix = df_feature_matrix.reset_index()
-
-
-    # Dropping Zero variance features
-    # df_feature_matrix.drop(
-    #     columns= zero_variance_features(df_feature_matrix), 
-    #     inplace = True
-    #     )
     
     return df_feature_matrix
 
 
 
-def aggregated_features_sum(df, id):
-
-    if id != 'SK_ID_CURR':
-        try:
-            df_simplified = df[[f'{id}', 'SK_ID_CURR']].drop_duplicates().reset_index(drop=True)
-            df = df.drop(columns=['SK_ID_CURR'])
-        except:
-            df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
-    else:
-        df_simplified = df[[f'{id}']].drop_duplicates().reset_index(drop=True)
-
-
-    # Creating new aggregated features
-
-    es = ft.EntitySet(id='df_data')
-
-    es = es.add_dataframe(dataframe_name='df_simplified',
-                        dataframe=df_simplified,
-                        index=f'{id}')
-
-    es = es.add_dataframe(dataframe_name='df',
-                        dataframe=df.reset_index(drop=True),
-                        make_index=True,
-                        index='index')
-
-    es = es.add_relationship(parent_dataframe_name='df_simplified',
-                            parent_column_name=f'{id}',
-                            child_dataframe_name='df',
-                            child_column_name=f'{id}')
-
-    df_feature_matrix, feature_defs = ft.dfs(entityset=es,
-                                        target_dataframe_name='df_simplified',
-                                        agg_primitives=['sum']
-                                        )
-
-
-    df_feature_matrix = df_feature_matrix.reset_index()
-
-    return df_feature_matrix
-
-
-
-def model_feature_importance_exteranal(df):
+def model_feature_importance_exteranal(df: pd.DataFrame, target: str):
+    """ Feature importance from External Source """
 
     try: 
-        df_filtered = df.dropna(subset='EXT_SOURCE_1')
+        df_filtered = df.dropna(subset=target)
     except:
         df_filtered = df
 
@@ -152,24 +93,20 @@ def model_feature_importance_exteranal(df):
 
 
 
-    y = df_filtered['EXT_SOURCE_1']
-    X = df_filtered.drop(columns=['TARGET', 'EXT_SOURCE_1', 'SK_ID_CURR'])
+    y = df_filtered[target]
+    X = df_filtered.drop(columns=['TARGET', target, 'SK_ID_CURR'])
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     numerical_features = X.select_dtypes(include=['number']).columns.tolist()
 
-    # Preprocessing for numerical data
     numerical_transformer = StandardScaler()
 
-    # Preprocessing for categorical data
     categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
-    # Bundle preprocessing for numerical and categorical data
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numerical_transformer, numerical_features),
-            #('cat', categorical_transformer, categorical_features)
         ])
 
     params = {
@@ -181,10 +118,8 @@ def model_feature_importance_exteranal(df):
         'verbose': 0,
     }
 
-    # Define the model
     model = LGBMRegressor(**params, n_estimators=100)
 
-    # Create and evaluate the pipeline
     pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('model', model)
@@ -192,25 +127,20 @@ def model_feature_importance_exteranal(df):
 
     pipeline.fit(X_train, y_train)
 
-    # Predict on the test set
     y_pred = pipeline.predict(X_test)
 
-    # Evaluate the model
     mae = mean_absolute_error(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
-    # Store the metrics in a dictionary
     metrics = {
         'MAE': mae,
         'MSE': mse,
         'R2': r2
     }
 
-    # Convert the dictionary to a DataFrame
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
 
-    # Reshape the DataFrame to have a single row
     metrics_df = metrics_df.set_index('Metric').T
 
     # Plot the heatmap with annotations
@@ -223,22 +153,20 @@ def model_feature_importance_exteranal(df):
     model = pipeline.named_steps['model']
     feature_importances = model.feature_importances_
 
-    # Get the feature names from the preprocessor
-    feature_names = numerical_features #+ list(pipeline.named_steps['preprocessor'].transformers_[1][1].get_feature_names_out(categorical_features))
+    feature_names = numerical_features 
 
-    # Create a DataFrame for feature importances
     feature_importance = pd.DataFrame({
         'feature': feature_names,
         'importance': feature_importances
     })
 
-    # Sort the DataFrame by importance
     feature_importance = feature_importance.sort_values(by='importance', ascending=False)
     
     return feature_importance
 
 
-def model_feature_importance_target(df):
+def model_feature_importance_target(df: pd.DataFrame):
+    """ Feature importance for TARGET """
 
     df = df.dropna(subset='TARGET')
 
@@ -260,14 +188,10 @@ def model_feature_importance_target(df):
 
     numerical_features = X.select_dtypes(include=['number']).columns.tolist()
     categorical_features = X.select_dtypes(include=['object']).columns.tolist()
-
-    # Preprocessing for numerical data
     numerical_transformer = StandardScaler()
 
-    # Preprocessing for categorical data
     categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
-    # Bundle preprocessing for numerical and categorical data
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numerical_transformer, numerical_features),
@@ -348,7 +272,7 @@ def model_feature_importance_target(df):
 
 
 def plot_feature_importance(feature_importance):
-    # Plot feature importance
+    """ Plot feature importance """
     plt.figure(figsize=(10, 10))
     plt.barh(feature_importance['feature'], feature_importance['importance'])
     plt.xlabel('Feature Importance')
@@ -358,28 +282,18 @@ def plot_feature_importance(feature_importance):
     plt.show()
 
 
-def clustering_k_means(df, n_clusters):
+def clustering_k_means(df: pd.DataFrame, n_clusters: int):
+    """ CLusters with K means """
     polars_df = pl.from_pandas(df)
-
-    # Convert Polars DataFrame to a numpy array for K-means
     X = polars_df.to_numpy()
-
-    # Standardize the features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-
-    # Fit the model to the data
     kmeans.fit(X_scaled)
 
-    # Extract cluster labels
     labels = kmeans.labels_
-
-    # Add cluster labels to the Polars DataFrame
     polars_df = polars_df.with_columns(pl.Series(name="cluster", values=labels))
-
-    # print(polars_df)
 
     column_names = df.columns.to_list()
 
@@ -395,8 +309,8 @@ def clustering_k_means(df, n_clusters):
     return polars_df.to_pandas()['cluster']
 
 
-def clustering_k_means_test(df):
-    # Convert Pandas DataFrame to Polars DataFrame
+def clustering_k_means_test(df: pd.DataFrame):
+    """ Ploting Cluster numbers vs Inertia """
     polars_df = pl.from_pandas(df)
 
     # Convert Polars DataFrame to a numpy array for K-means
@@ -436,120 +350,166 @@ def clustering_k_means_test(df):
 
 
 
-def optimize_hyperparameters(classifier_name, model, param_grid, X, y):
-    def objective(trial):
-        param_dict = {}
-        for key, values in param_grid.items():
-            param_dict[key] = trial.suggest_categorical(key, values)
-        
-        model.set_params(**param_dict)
-        
-        # Example pipeline (replace with your actual pipeline if any)
-        pipeline = Pipeline([
-            ('imputer', SimpleImputer(strategy='mean')),  # Impute missing values with mean
-            ('scaler', StandardScaler()),  # Standardize features
-            ('clf', model)  # Classifier
-        ])
-        
-        # Example metric (replace with your actual metric)
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        
-        # Convert to NumPy arrays
-        X_np = X.values if hasattr(X, 'values') else X
-        y_np = y.values if hasattr(y, 'values') else y
-        
-        scores = []
-        for train_index, test_index in cv.split(X_np, y_np):
-            X_train, X_test = X_np[train_index], X_np[test_index]
-            y_train, y_test = y_np[train_index], y_np[test_index]
-            
-            # Calculate sample weights for the training set
-            class_weights = np.bincount(y_train) / len(y_train)
-            sample_weights = np.where(y_train == 0, 1 / class_weights[0], 1 / class_weights[1])
-            
-            # Fit pipeline with sample weights
-            pipeline.fit(X_train, y_train, clf__sample_weight=sample_weights)
-            
-            # Predict on test set
-            y_pred = pipeline.predict(X_test)
-            
-            # Evaluate recall on test set
-            score = f1_score(y_test, y_pred)
-            scores.append(score)
 
-        
-        
-        return np.mean(scores)
-    
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=5)
-    
-    print(f"Best {classifier_name} parameters: {study.best_params}")
-    print(f"Best {classifier_name} f1_score: {study.best_value:.2f}")
-    
-    return study.best_params
+def predict_proba_available(model, X_validation):
+    """ Check if predict_proba is available. """
+    if hasattr(model, 'predict_proba'):
+        y_proba = model.predict_proba(X_validation)[:, 1] 
+    else:
+        y_proba = model.predict(X_validation) 
+
+    return y_proba
 
 
 
+def cross_val_thresholds(fold, X, y, thresholds, classifiers):
+    """ Perform cross-validation with threshold adjustments and feature scaling """
 
-    """ Cross validation with threshold adjustments and feature scaling """
     kf = KFold(n_splits=fold, shuffle=True, random_state=42)
 
-    # Initialize lists to store metric scores and confusion matrices
-    metric_scores = {metric: {clf_name: [] for clf_name in classifiers.keys()}
+    # Initialize dictionaries to store metric scores and confusion matrices
+    metric_scores = {metric: {clf_name: [] for clf_name in classifiers}
                      for metric in ['accuracy', 'precision', 'recall', 'f1']}
-    confusion_matrices = {clf_name: np.zeros(
-        (2, 2)) for clf_name in classifiers.keys()}
+    confusion_matrices = {clf_name: np.zeros((2, 2)) for clf_name in classifiers}
 
     for train_index, val_index in kf.split(X):
-        X_train_i, X_val = X.iloc[train_index], X.iloc[val_index]
-        y_train_i, y_val = y.iloc[train_index], y.iloc[val_index]
+        X_train, X_val = X.iloc[train_index], X.iloc[val_index]
+        y_train, y_val = y.iloc[train_index], y.iloc[val_index]
 
         # Initialize and fit StandardScaler on training data
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train_i)
+        X_train_scaled = scaler.fit_transform(X_train)
         X_val_scaled = scaler.transform(X_val)
 
-        for clf_name, clf in classifiers.items():
-            clf.fit(X_train_scaled, y_train_i)
+    for clf_name, clf_pipeline in classifiers.items():
+        clf = clf_pipeline
 
-            # Threshold update
-            scores = help_tool.predict_proba_available(clf, X_val_scaled)
+        # Fit classifier on scaled training data
+        clf.fit(X_train_scaled, y_train)
 
-            optimal_threshold = thresholds_df[clf_name].iloc[0]
-            y_pred = (scores > optimal_threshold).astype(int)
+        # Get predicted probabilities and optimal threshold
+        scores = predict_proba_available(clf, X_val_scaled)
+        optimal_threshold = thresholds[clf_name]['Optimal_Threshold'].iloc[0]
+        y_pred = (scores > optimal_threshold).astype(int)
 
-            # Calculate metrics
-            metric_scores['accuracy'][clf_name].append(
-                accuracy_score(y_val, y_pred))
-            metric_scores['precision'][clf_name].append(
-                precision_score(y_val, y_pred))
-            metric_scores['recall'][clf_name].append(
-                recall_score(y_val, y_pred))
-            metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
+        # Calculate metrics
+        metric_scores['accuracy'][clf_name].append(accuracy_score(y_val, y_pred))
+        metric_scores['precision'][clf_name].append(precision_score(y_val, y_pred))
+        metric_scores['recall'][clf_name].append(recall_score(y_val, y_pred))
+        metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
 
-            # Compute confusion matrix
-            cm = confusion_matrix(y_val, y_pred)
-            confusion_matrices[clf_name] += cm
+        # Compute confusion matrix
+        cm = confusion_matrix(y_val, y_pred)
+        confusion_matrices[clf_name] += cm
 
-    # Calculate average scores
+    # Calculate average scores and confusion matrices
     avg_metric_scores = {metric: {clf_name: np.mean(scores) for clf_name, scores in clf_scores.items()}
                          for metric, clf_scores in metric_scores.items()}
+    avg_confusion_matrices = {clf_name: matrix / fold for clf_name, matrix in confusion_matrices.items()}
 
-    # Average confusion matrices
-    avg_confusion_matrices = {
-        clf_name: matrix / fold for clf_name, matrix in confusion_matrices.items()}
-
+    # Prepare CV results as a list of dictionaries
     cv_results = []
-    for clf_name, scores in avg_metric_scores['accuracy'].items():
+    for clf_name  in classifiers:
         cv_results.append({
-            'Classifier': classifiers[clf_name].__class__.__name__,
-            'CV Mean Accuracy': np.mean(scores),
+            'Classifier': clf_name,
+            'CV Mean Accuracy': np.mean(metric_scores['accuracy'][clf_name]),
             'CV Mean Precision': np.mean(avg_metric_scores['precision'][clf_name]),
             'CV Mean Recall': np.mean(avg_metric_scores['recall'][clf_name]),
             'CV Mean F1': np.mean(avg_metric_scores['f1'][clf_name]),
             'Confusion Matrix': avg_confusion_matrices[clf_name]
         })
 
+    # Convert results to DataFrame
     model_info = pd.DataFrame(cv_results)
     return model_info
+
+
+
+def pipeline_creation(params, X_train, y_train, X_validation, y_validation):
+    """ Creates pipeline """
+    pipeline = Pipeline(steps=[
+        ('scaler', StandardScaler()),
+        ('classifier', LGBMClassifier(**params, verbose=-1))
+    ])
+
+    # Fit the pipeline on the training data
+    pipeline.fit(X_train, y_train)
+
+    # Predict on training and validation data
+    y_pred_train = pipeline.predict(X_train)
+    y_pred_validation = pipeline.predict(X_validation)
+
+    print(f'F1 Score in Training: {f1_score(y_train, y_pred_train):.4f}')
+    print(f'F1 Score in Validation: {f1_score(y_validation, y_pred_validation):.4f}')
+
+    return pipeline
+
+
+def find_threshold(pipeline, X_validation, y_validation, name: str):
+
+    # Create thresholds for decision threshold tuning
+    thresholds = np.linspace(0, 1, 100)
+
+    # Initialize variables to track best accuracy and threshold
+    best_accuracy = 0
+    optimal_threshold = 0
+
+    y_proba = predict_proba_available(pipeline, X_validation)
+
+    # Find optimal threshold based on accuracy
+    for threshold in thresholds:
+        y_pred = (y_proba > threshold).astype(int)
+        f1 = f1_score(y_validation, y_pred)
+
+        if f1 > best_accuracy:
+            best_accuracy = f1
+            optimal_threshold = threshold
+
+    # Use the optimal threshold to predict final labels
+    y_pred_optimal = (y_proba > optimal_threshold).astype(int)
+
+
+    results = []
+    results.append({'Model': name,
+                    'Optimal_Threshold': optimal_threshold,
+                    'Accuracy': accuracy_score(y_validation, y_pred_optimal),
+                    'Precision': precision_score(y_validation, y_pred_optimal),
+                    'Recall': recall_score(y_validation, y_pred_optimal),
+                    'F1_Score': f1_score(y_validation, y_pred_optimal),
+                    'AUC': roc_auc_score(y_validation, y_pred_optimal)
+                    })
+
+    model_threshol_search = pd.DataFrame(results)
+
+    plt.figure(figsize=(8, 3))
+    sns.heatmap(model_threshol_search.set_index(
+        'Model'), annot=True, fmt=".2f")
+    plt.title('Model Performance Metrics')
+    plt.show()
+
+    return model_threshol_search
+
+
+def model_score_test(models, model_names, thresholds_df, X, y):
+    """ Calculate various scores for multiple models"""
+
+    data = []
+    for model, label in zip(models, model_names):
+        if hasattr(model, 'decision_function'):
+            predictions = model.decision_function(X)
+        else:
+            predictions = model.predict_proba(X)[:, 1]
+
+        optimal_threshold = thresholds_df.set_index('Model').loc[label, 'Optimal_Threshold']
+        adjusted_predictions = (predictions > optimal_threshold).astype(int)
+
+        f1 = f1_score(y, adjusted_predictions)
+        accuracy = accuracy_score(y, adjusted_predictions)
+        precision = precision_score(y, adjusted_predictions)
+        recall = recall_score(y, adjusted_predictions)
+        auc = roc_auc_score(y, predictions)
+
+        data.append([label, accuracy, precision, recall, f1, auc])
+
+    columns = ["Classifier", "Accuracy", "Precision", "Recall", "F1", "AUC"]
+    return pd.DataFrame(data, columns=columns)

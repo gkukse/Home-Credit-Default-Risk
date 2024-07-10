@@ -1,23 +1,10 @@
-"""Helper module for EDA notebook to perform 
-data cleaning and preprocessing"""
-
-
-from scipy.stats import chi2_contingency
-import os
-from typing import Optional, Any
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import statsmodels.api as sm
 from scipy import stats
-from sklearn.metrics import (accuracy_score, auc, confusion_matrix, roc_curve)
-from sklearn.model_selection import KFold
-from unidecode import unidecode
-import textblob
+from scipy.stats import chi2_contingency
 from sklearn.metrics import matthews_corrcoef
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 pd.plotting.register_matplotlib_converters()
 
@@ -28,7 +15,7 @@ confidence_level = 0.95
 
 cmap='rocket'
 
-def phi_corr_matrix(df, feature_list):
+def phi_corr_matrix(df: pd.DataFrame, feature_list):
     """Compute and visualize Phi correlation matrix for binary features"""
     corr_matrix = pd.DataFrame(index=feature_list, columns=feature_list)
 
@@ -53,7 +40,7 @@ def phi_corr_matrix(df, feature_list):
 
 
 
-def chi_squared_test(df, feature_tuple):
+def chi_squared_test(df: pd.DataFrame, feature_tuple):
     """ Chi-squared test for binary features """
 
     contingency_table = pd.crosstab(df[feature_tuple[0]], df[feature_tuple[1]])
@@ -69,7 +56,7 @@ def chi_squared_test(df, feature_tuple):
         print(f"{a} {b} Do not reject the null hypothesis.")
 
 
-def biserial_heatmap(df, continues_features, binary_features):
+def biserial_heatmap(df: pd.DataFrame, continues_features, binary_features):
     """ Biserial correlation for binary and continues features. """
     correlation_matrix = pd.DataFrame(
         index=binary_features, columns=continues_features)
@@ -96,7 +83,7 @@ def biserial_heatmap(df, continues_features, binary_features):
     plt.show()
 
 
-def pearson_heatmap(df, continuous_features, target_continuous_feature):
+def pearson_heatmap(df: pd.DataFrame, continuous_features, target_continuous_feature):
     """ Pearson correlation for continuous features against a target continuous feature. """
     correlation_matrix = pd.DataFrame(index=[target_continuous_feature], columns=continuous_features)
 
@@ -111,7 +98,7 @@ def pearson_heatmap(df, continuous_features, target_continuous_feature):
     plt.show()
 
     
-def confidence_intervals(data, type) -> None:
+def confidence_intervals(data: pd.DataFrame, type) -> None:
     """Calculate Confidence Intervals for a given dataset."""
 
     sample_mean = np.mean(data)
@@ -155,7 +142,7 @@ def significance_t_test(df: pd.DataFrame, feature: str, change_feature: str,
 
 
 
-def pearson_correlation_test(df, feature, change_feature):
+def pearson_correlation_test(df: pd.DataFrame, feature, change_feature):
 
     correlation, p_value = stats.pearsonr(df[feature], df[change_feature])
     
@@ -168,7 +155,7 @@ def pearson_correlation_test(df, feature, change_feature):
 
 
 
-def vif(df):
+def vif(df: pd.DataFrame):
     """Calculating Variance Inflation Factor (VIF)."""
     vif = pd.DataFrame()
     vif["variables"] = df.columns

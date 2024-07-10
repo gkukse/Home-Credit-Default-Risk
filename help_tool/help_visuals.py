@@ -1,34 +1,12 @@
-"""Helper module for EDA notebook to perform 
-data cleaning and preprocessing"""
-
-
-from scipy.stats import chi2_contingency
-import os
-from typing import Optional, Any
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
-from scipy import stats
-from sklearn.metrics import (accuracy_score, auc, confusion_matrix, roc_curve)
-from sklearn.model_selection import KFold
-from unidecode import unidecode
-import textblob
-from sklearn.metrics import matthews_corrcoef
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 pd.plotting.register_matplotlib_converters()
 
 
 cmap='rocket'
-
-def derivative_feature_corr(df, string):
-    """ Correlation of derivative normalized features """
-    corr = df.filter(like=string, axis=1).corr()
-
-    sns.heatmap(corr, annot=True, vmin=-1, vmax=1, mask=np.triu(corr))
-    plt.show()
 
 
 def distribution_check(df: pd.DataFrame) -> None:
