@@ -111,7 +111,7 @@ def dummy_columns(df: pd.DataFrame, feature_list: list):
 def cross_validation_param(model_info):
     """ Parameter heatmap """
     heatmap_data = model_info
-
+    plt.figure(figsize=(8, 5))
     heatmap_data.set_index('Classifier', inplace=True)
 
     sns.heatmap(heatmap_data, annot=True, fmt=".2f", linewidths=.5)

@@ -369,7 +369,7 @@ def cross_val_thresholds(fold, X, y, thresholds, classifiers):
 
     # Initialize dictionaries to store metric scores and confusion matrices
     metric_scores = {metric: {clf_name: [] for clf_name in classifiers}
-                     for metric in ['accuracy', 'precision', 'recall', 'f1']}
+                     for metric in ['accuracy', 'precision', 'recall', 'f1', 'auc']}
     confusion_matrices = {clf_name: np.zeros((2, 2)) for clf_name in classifiers}
 
     for train_index, val_index in kf.split(X):
@@ -389,7 +389,7 @@ def cross_val_thresholds(fold, X, y, thresholds, classifiers):
 
         # Get predicted probabilities and optimal threshold
         scores = predict_proba_available(clf, X_val_scaled)
-        optimal_threshold = thresholds[clf_name]['Optimal_Threshold'].iloc[0]
+        optimal_threshold = thresholds[clf_name]
         y_pred = (scores > optimal_threshold).astype(int)
 
         # Calculate metrics
@@ -397,6 +397,7 @@ def cross_val_thresholds(fold, X, y, thresholds, classifiers):
         metric_scores['precision'][clf_name].append(precision_score(y_val, y_pred))
         metric_scores['recall'][clf_name].append(recall_score(y_val, y_pred))
         metric_scores['f1'][clf_name].append(f1_score(y_val, y_pred))
+        metric_scores['auc'][clf_name].append(roc_auc_score(y_val, y_pred))
 
         # Compute confusion matrix
         cm = confusion_matrix(y_val, y_pred)
@@ -416,6 +417,7 @@ def cross_val_thresholds(fold, X, y, thresholds, classifiers):
             'CV Mean Precision': np.mean(avg_metric_scores['precision'][clf_name]),
             'CV Mean Recall': np.mean(avg_metric_scores['recall'][clf_name]),
             'CV Mean F1': np.mean(avg_metric_scores['f1'][clf_name]),
+            'CV Mean ROC AUC': np.mean(avg_metric_scores['auc'][clf_name]),
             'Confusion Matrix': avg_confusion_matrices[clf_name]
         })
 
@@ -426,43 +428,43 @@ def cross_val_thresholds(fold, X, y, thresholds, classifiers):
 
 
 def pipeline_creation(params, X_train, y_train, X_validation, y_validation):
-    """ Creates pipeline """
+    """ Creates pipeline and print F1 score """
     pipeline = Pipeline(steps=[
         ('scaler', StandardScaler()),
         ('classifier', LGBMClassifier(**params, verbose=-1))
     ])
 
     # Fit the pipeline on the training data
-    pipeline.fit(X_train, y_train)
+    my_pype = pipeline.fit(X_train, y_train)
 
     # Predict on training and validation data
     y_pred_train = pipeline.predict(X_train)
     y_pred_validation = pipeline.predict(X_validation)
 
-    print(f'F1 Score in Training: {f1_score(y_train, y_pred_train):.4f}')
-    print(f'F1 Score in Validation: {f1_score(y_validation, y_pred_validation):.4f}')
+    print(f'Precision Score in Training: {precision_score(y_train, y_pred_train):.4f}')
+    print(f'Precision Score in Validation: {precision_score(y_validation, y_pred_validation):.4f}')
 
-    return pipeline
+    return my_pype
 
 
-def find_threshold(pipeline, X_validation, y_validation, name: str):
+def find_threshold(my_pipeline, X_validation, y_validation, name: str):
 
     # Create thresholds for decision threshold tuning
     thresholds = np.linspace(0, 1, 100)
 
     # Initialize variables to track best accuracy and threshold
-    best_accuracy = 0
+    best_precision = 0
     optimal_threshold = 0
 
-    y_proba = predict_proba_available(pipeline, X_validation)
+    y_proba = predict_proba_available(my_pipeline, X_validation)
 
     # Find optimal threshold based on accuracy
     for threshold in thresholds:
         y_pred = (y_proba > threshold).astype(int)
-        f1 = f1_score(y_validation, y_pred)
+        precision = f1_score(y_validation, y_pred)
 
-        if f1 > best_accuracy:
-            best_accuracy = f1
+        if precision > best_precision:
+            best_precision = precision
             optimal_threshold = threshold
 
     # Use the optimal threshold to predict final labels
@@ -487,7 +489,7 @@ def find_threshold(pipeline, X_validation, y_validation, name: str):
     plt.title('Model Performance Metrics')
     plt.show()
 
-    return model_threshol_search
+    return optimal_threshold
 
 
 def model_score_test(models, model_names, thresholds_df, X, y):
@@ -513,3 +515,65 @@ def model_score_test(models, model_names, thresholds_df, X, y):
 
     columns = ["Classifier", "Accuracy", "Precision", "Recall", "F1", "AUC"]
     return pd.DataFrame(data, columns=columns)
+
+
+
+
+def model_evaluations_threshold(model, threshold, X_eval, y_eval):
+    """ Returns model evaluation parameters. """
+
+    predictions = model.predict_proba(X_eval)[:, 1]
+    adjusted_predictions = (predictions > threshold).astype(int)
+    y_predprob = adjusted_predictions
+
+    data = []
+    f1 = f1_score(y_eval, y_predprob)
+    accuracy = accuracy_score(y_eval, y_predprob)
+    precision = precision_score(y_eval, y_predprob)
+    recall = recall_score(y_eval, y_predprob)
+    auc = roc_auc_score(y_eval, y_predprob)
+
+    name = model.named_steps['classifier'].__class__.__name__
+
+    data.append([name, threshold, accuracy, precision, recall, f1, auc])
+
+    columns = ['Classifier', 'Threshold', "Accuracy", "Precision", "Recall", "F1", "AUC"]
+
+    return pd.DataFrame(data, columns=columns)
+
+
+def model_evaluations(model, X_eval, y_eval):
+    """ Returns model evaluation parameters. """
+
+    y_pred = model.predict(X_eval)
+    y_predprob = model.predict_proba(X_eval)[:, 1]
+
+    data = []
+    f1 = f1_score(y_eval, y_pred)
+    accuracy = accuracy_score(y_eval, y_pred)
+    precision = precision_score(y_eval, y_pred)
+    recall = recall_score(y_eval, y_pred)
+    auc = roc_auc_score(y_eval, y_predprob)
+
+    name = model.named_steps['classifier'].__class__.__name__
+
+    data.append([name, False, accuracy, precision, recall, f1, auc])
+
+    columns = ['Classifier', 'Threshold', "Accuracy", "Precision", "Recall", "F1", "AUC"]
+
+    return pd.DataFrame(data, columns=columns)
+
+
+def multi_evaluation(model, X_train, y_train, X_validation, y_validation):
+    """ 
+    Evaluate the model on both training and validation sets and combine the results.
+    """
+
+    df_1 = model_evaluations(model, X_train, y_train)
+    df_1['Type'] = 'Train'
+    df_2 = model_evaluations(model, X_validation, y_validation)
+    df_2['Type'] = 'Validate'
+
+    return pd.concat([df_1, df_2], ignore_index=True)
+
+
