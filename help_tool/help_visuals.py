@@ -26,16 +26,13 @@ def distribution_check(df: pd.DataFrame) -> None:
 
             print(f'{feature}')
 
-            # Outlier check (Box plot)
             df.boxplot(column=feature, ax=axes[0])
             axes[0].set_title(
                 f'{feature} ranges from {df[feature].min():.2f} to {df[feature].max():.2f}', fontsize=fontsize)
 
-            # Distribution check (Histogram).
             sns.histplot(data=df, x=feature, kde=True, bins=20, ax=axes[1])
             axes[1].set_title(f'Distribution of {feature}', fontsize=fontsize)
 
-            # Normality check (QQ plot).
             sm.qqplot(df[feature].dropna(), line='s', ax=axes[2])
             axes[2].set_title(f'Q-Q plot of {feature}', fontsize=fontsize)
 

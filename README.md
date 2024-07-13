@@ -29,9 +29,25 @@ copy==0.1.0
 shap==0.45.1
 optuna==3.6.1
 
+## Step-By-Step
+Notebooks:
+* 1 shows monthly behavour aggregation and feature creation for Bureau data
+* 2-3 aggregates monthly behaviour and feature creation for Previous Applivation
+* 4 takes new Bureau and Previous Applivation features, selects top 15
+* 5 has an EDA on top 15 features
+* 6 has models created, tuned, compared
+
+Helping Functions are for repeating stets of functions:
+* help_model
+* help_stats
+* help_tool
+* help_visuals
+
 ## Findings
 
 * Exploratory Data Analysis (EDA): Dataset is combined out of 7 tables, current loan application, previous loan application and previous loan repaying information, as well as information from Credit Bureau. Data is collected for people 20s-70s. Gender distribution is balanced, but female makes up a slight majority. Most people take the exact amount of credit they need for their goods (AMT_GOODS_PRICE / AMT_CREDIT is RATIO_GOODS_PRICE_CREDIT) and have Secondary education. Previous application has average risk score is dependent on many variables: Years of employment, Age, Gender. Dataset has External Sources, but they are not correlated to any of the features or each other, this shows they are derived from different datasets. 
+
+Defaulting Customers are 4-2 years older, higher education take more Credit. Additionally, Home Credit past application risk category is higher for Defaulting Customers, but Males are at meddium risk, despite Default fact. New customers with 72-73 mill. Credit will default, but not 59-64 mill. Credit.
 * Correlation: Some features are linearly correlated, i.e., amount for a loan and goods price, payment due date and payment date. However, these features are interesting in comparison to each other and their ratio was instead of them. Also, datasets had a lot of derivative features provided, i.e., mode and mean of the same feature.
 * Feature Engineering: Bureau Data, Cash, Position, Instalment balances describe monthly Customer behaviors. 
 ![alt text](image-5.png)
@@ -46,6 +62,8 @@ Decision Tree and LightGBM machine learning models were tested. Class imbalance 
 
 ## Suggestions for Home Credit 
 * Customers that take more credit than the good price requires, are one of the main groups that the model identifies as risky. Credit amount could be tied to requested good cost.
+* New customers with 72-73 mill. amount of credit is the most risky. New customers with 59-64mill. are safer.
+* Males with previous applications have a past risk rating Meddium, while Females have a more nuanced past risk rating. Male rating system could be revised to help identify the defaulters more clearly.
 ![alt text](image-1.png)
 
 ## Future Work

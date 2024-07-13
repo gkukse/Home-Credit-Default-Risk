@@ -34,7 +34,6 @@ def first_look(df: pd.DataFrame) -> None:
     df_null = df.apply(lambda x: x.isna().sum()).to_frame().T.rename(
         index={df.index[0]: 'Null values, Count'})
 
-    # Copy of df_null for Null %
     df_null_proc = round(df_null / df_size[0] * 100, 1)
     df_null_proc = df_null_proc.rename(
         index={df_null.index[0]: 'Null values, %'})
@@ -64,16 +63,13 @@ def distribution_check(df: pd.DataFrame) -> None:
 
             print(f'{feature}')
 
-            # Outlier check (Box plot)
             df.boxplot(column=feature, ax=axes[0])
             axes[0].set_title(
                 f'{feature} ranges from {df[feature].min()} to {df[feature].max()}')
 
-            # Distribution check (Histogram).
             sns.histplot(data=df, x=feature, kde=True, bins=20, ax=axes[1])
             axes[1].set_title(f'Distribution of {feature}')
 
-            # Normality check (QQ plot).
             sm.qqplot(df[feature].dropna(), line='s', ax=axes[2])
             axes[2].set_title(f'Q-Q plot of {feature}')
 
@@ -100,8 +96,6 @@ def dummy_columns(df: pd.DataFrame, feature_list: list):
     df = pd.concat([df, df_dummies], axis=1)
     df.drop(columns=feature_list, inplace=True)
 
-    # Drop '_No' features and leave '_Yes'
-    # Replace the original column with new dummy
     df = df.drop(columns=[col for col in df.columns if col.endswith('_No')])
     df.columns = [col.replace('_Yes', '') for col in df.columns]
     return df
@@ -179,7 +173,7 @@ def convert_flags(df):
     return df
 
 def accompanied(df, target_feature):
-    #target_feature = 'NAME_TYPE_SUITE'
+    """ target_feature = 'NAME_TYPE_SUITE' """
     df[target_feature] = np.where(df[target_feature] == 'Unaccompanied', 1, 0)
     return df[target_feature]
 
@@ -198,7 +192,7 @@ def risk_category(df, target_feature):
     return df['new_feature']
 
 def client_type_encoding(df, target_feature):
-    #target_feature = 'NAME_CLIENT_TYPE'
+    """ target_feature = 'NAME_CLIENT_TYPE' """
     df.loc[df[target_feature] == 'New', target_feature] = 1
     df.loc[df[target_feature] == 'Refreshed', target_feature] = 1.5
     df.loc[df[target_feature] == 'Repeater', target_feature] = 2
@@ -247,7 +241,7 @@ def contract_status(df, target_feature):
     return df[target_feature]
 
 def payment_type(df, target_feature):
-    #target_feature = 'NAME_PAYMENT_TYPE'
+    """ target_feature = 'NAME_PAYMENT_TYPE' """
 
     df.loc[df[target_feature] == 'Cash through the bank', target_feature] = 1
     df.loc[~df[target_feature].isin(['Cash through the bank', 'XNA']), target_feature] = 0
@@ -317,7 +311,7 @@ def encode_categories(df):
     df['NAME_EDUCATION_TYPE'] = df['NAME_EDUCATION_TYPE'].map(education_mapping).astype(int)
 
     df['NAME_TYPE_SUITE'] = accompanied(df, 'NAME_TYPE_SUITE')
-    #df = weekday_encoding(df)
+
 
     family_status_mapping = {
         'Unknown': np.nan, 

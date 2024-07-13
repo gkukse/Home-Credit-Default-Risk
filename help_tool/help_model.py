@@ -79,7 +79,11 @@ def aggregated_features(df: pd.DataFrame, id: str):
 
 
 def model_feature_importance_exteranal(df: pd.DataFrame, target: str):
-    """ Feature importance from External Source """
+    """ 
+     Feature importance from External Source.
+     Plot the heatmap with annotations.
+     Extract feature importance.
+    """
 
     try: 
         df_filtered = df.dropna(subset=target)
@@ -184,7 +188,7 @@ def model_feature_importance_target(df: pd.DataFrame):
 
 
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     numerical_features = X.select_dtypes(include=['number']).columns.tolist()
     categorical_features = X.select_dtypes(include=['object']).columns.tolist()
@@ -209,10 +213,8 @@ def model_feature_importance_target(df: pd.DataFrame):
         'class_weight': 'balanced' 
     }
 
-    # Define the model
     model = LGBMClassifier(**params, n_estimators=100)
 
-    # Create and evaluate the pipeline
     pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('model', model)
@@ -220,37 +222,29 @@ def model_feature_importance_target(df: pd.DataFrame):
 
     pipeline.fit(X_train, y_train)
 
-    # Predict on the test set
     y_pred = pipeline.predict(X_test)
     y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
 
-    # # Evaluate the model
     precision = precision_score(y_test, y_pred)
     recall = recall_score(y_test, y_pred)
     accuracy = accuracy_score(y_test, y_pred)
     roc_auc = roc_auc_score(y_test, y_pred_proba)
 
-    # Store the metrics in a dictionary
     metrics = {
         'Precision': precision,
         'Accuracy': accuracy,
         'Recall': recall,
         'ROC AUC': roc_auc
     }
-
-    # Convert the dictionary to a DataFrame
     metrics_df = pd.DataFrame(list(metrics.items()), columns=['Metric', 'Value'])
-
-    # Reshape the DataFrame to have a single row
     metrics_df = metrics_df.set_index('Metric').T
 
-    # Plot the heatmap with annotations
+
     plt.figure(figsize=(6, 2))
     sns.heatmap(metrics_df, annot=True, fmt=".3f", cmap="coolwarm", cbar=False)
     plt.title("Model Evaluation Metrics")
     plt.show()
 
-    # Extract feature importance
     model = pipeline.named_steps['model']
     feature_importances = model.feature_importances_
 
@@ -259,13 +253,10 @@ def model_feature_importance_target(df: pd.DataFrame):
     except: 
         feature_names = numerical_features 
 
-    # Create a DataFrame for feature importances
     feature_importance = pd.DataFrame({
         'feature': feature_names,
         'importance': feature_importances
     })
-
-    # Sort the DataFrame by importance
     feature_importance = feature_importance.sort_values(by='importance', ascending=False)
     
     return feature_importance
@@ -297,7 +288,6 @@ def clustering_k_means(df: pd.DataFrame, n_clusters: int):
 
     column_names = df.columns.to_list()
 
-    # Visualize the clusters (if the data is 2D or can be reduced to 2D)
     plt.figure(figsize=(10, 6))
     plt.scatter(X_scaled[:, 0], X_scaled[:, 1], c=labels, cmap='viridis', s=50)
     plt.title(f'K-means Clustering with {n_clusters} clusters')
@@ -311,16 +301,10 @@ def clustering_k_means(df: pd.DataFrame, n_clusters: int):
 
 def clustering_k_means_test(df: pd.DataFrame):
     """ Ploting Cluster numbers vs Inertia """
-    polars_df = pl.from_pandas(df)
 
-    # Convert Polars DataFrame to a numpy array for K-means
-    X = polars_df.to_numpy()
-
-    # Standardize the features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(df)
 
-    # Elbow Method
     inertia = []
     silhouette_scores = []
     K = range(2, 10)
@@ -331,7 +315,6 @@ def clustering_k_means_test(df: pd.DataFrame):
         inertia.append(kmeans.inertia_)
         silhouette_scores.append(silhouette_score(X_scaled, kmeans.labels_))
 
-    # Plot the Elbow
     plt.figure(figsize=(16, 8))
     plt.subplot(1, 2, 1)
     plt.plot(K, inertia, 'bx-')
@@ -339,7 +322,6 @@ def clustering_k_means_test(df: pd.DataFrame):
     plt.ylabel('Inertia')
     plt.title('Elbow Method for Optimal k')
 
-    # Plot the Silhouette Scores
     plt.subplot(1, 2, 2)
     plt.plot(K, silhouette_scores, 'bx-')
     plt.xlabel('Number of clusters')
@@ -433,11 +415,7 @@ def pipeline_creation(params, X_train, y_train, X_validation, y_validation):
         ('scaler', StandardScaler()),
         ('classifier', LGBMClassifier(**params, verbose=-1))
     ])
-
-    # Fit the pipeline on the training data
     my_pype = pipeline.fit(X_train, y_train)
-
-    # Predict on training and validation data
     y_pred_train = pipeline.predict(X_train)
     y_pred_validation = pipeline.predict(X_validation)
 
@@ -449,16 +427,12 @@ def pipeline_creation(params, X_train, y_train, X_validation, y_validation):
 
 def find_threshold(my_pipeline, X_validation, y_validation, name: str):
 
-    # Create thresholds for decision threshold tuning
     thresholds = np.linspace(0, 1, 100)
-
-    # Initialize variables to track best accuracy and threshold
     best_precision = 0
     optimal_threshold = 0
 
     y_proba = predict_proba_available(my_pipeline, X_validation)
 
-    # Find optimal threshold based on accuracy
     for threshold in thresholds:
         y_pred = (y_proba > threshold).astype(int)
         precision = f1_score(y_validation, y_pred)
@@ -467,7 +441,6 @@ def find_threshold(my_pipeline, X_validation, y_validation, name: str):
             best_precision = precision
             optimal_threshold = threshold
 
-    # Use the optimal threshold to predict final labels
     y_pred_optimal = (y_proba > optimal_threshold).astype(int)
 
 

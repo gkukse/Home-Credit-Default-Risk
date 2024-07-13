@@ -19,7 +19,6 @@ def phi_corr_matrix(df: pd.DataFrame, feature_list):
     """Compute and visualize Phi correlation matrix for binary features"""
     corr_matrix = pd.DataFrame(index=feature_list, columns=feature_list)
 
-    # Calculate correlation coefficients
     for i in range(len(feature_list)):
         for j in range(i, len(feature_list)):
             feature1 = feature_list[i]
@@ -28,13 +27,11 @@ def phi_corr_matrix(df: pd.DataFrame, feature_list):
             corr_matrix.loc[feature1, feature2] = corr_coef
             corr_matrix.loc[feature2, feature1] = corr_coef
 
-    # Filter to lower triangular part
     mask = np.triu(np.ones(corr_matrix.shape), k=0).astype(bool)
     filtered_matrix = corr_matrix.mask(mask)
 
-    # Plot the correlation matrix
     sns.heatmap(filtered_matrix.astype(float), annot=True, annot_kws={"size": 8},
-                cmap=cmap, fmt=".2f", vmin=-1, vmax=1)  # Adjust vmin and vmax as needed
+                cmap=cmap, fmt=".2f", vmin=-1, vmax=1)
     plt.title('Phi Correlation Matrix of Binary Attributes')
     plt.show()
 
@@ -104,13 +101,11 @@ def confidence_intervals(data: pd.DataFrame, type) -> None:
     sample_mean = np.mean(data)
 
     if type == 'Continuous':
-        # Continuous feature
         # ddof=1 for sample standard deviation
         sample_std = np.std(data, ddof=1)
         critical_value = stats.norm.ppf((1 + confidence_level) / 2)
 
     elif type == 'Discrete':
-        # Discrete feature
         # Sample standard deviation for discrete data
         sample_std = np.sqrt(np.sum((data - sample_mean)**2) / (len(data) - 1))
         # t-distribution for discrete data
@@ -139,6 +134,26 @@ def significance_t_test(df: pd.DataFrame, feature: str, change_feature: str,
     else:
         print(
             f'p-value = {p_value:.4f} between {feature} and {change_feature}. Fail to reject null hypothesis')
+
+
+
+def significance_mannwhitneyu(df: pd.DataFrame, feature: str, change_feature: str,
+                        min_change_value: float, max_change_value: float) -> None:
+    """
+    Perform a Mann-Whitney U, when:
+      1. data are ordinal or continuous but not normally distributed
+      2. two samples are independent.
+      """
+    t_stat, p_value = stats.mannwhitneyu(df[df[change_feature] == min_change_value][feature],
+                                      df[df[change_feature] == max_change_value][feature])
+
+    if p_value < alpha:
+        print(
+            f'p-value = {p_value:.4f} between {feature} and {change_feature}. Reject null hypothesis')
+    else:
+        print(
+            f'p-value = {p_value:.4f} between {feature} and {change_feature}. Fail to reject null hypothesis')
+
 
 
 
